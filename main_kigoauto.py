@@ -9,7 +9,7 @@ from typing import Optional
 # Initialize KigoAutoLogin with error handling
 kigo = None
 try:
-    kigo = KigoAutoLogin(headless=False)
+    kigo = KigoAutoLogin(headless=True)
     print("KigoAutoLogin initialized successfully")
 except Exception as e:
     print(f"Warning: Failed to initialize KigoAutoLogin on startup: {str(e)}")
@@ -66,7 +66,7 @@ async def login(account: Account):
     # Initialize KigoAutoLogin if not already done
     if kigo is None:
         try:
-            kigo = KigoAutoLogin(headless=False)
+            kigo = KigoAutoLogin(headless=True)
             print("KigoAutoLogin initialized on demand")
         except Exception as e:
             error_msg = f"Failed to initialize WebDriver: {str(e)}"

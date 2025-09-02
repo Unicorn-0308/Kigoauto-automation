@@ -18,80 +18,88 @@ import random
 class KigoAutoLogin:
     def __init__(self, headless=False):
         self.headless = headless
-        self.driver = None
-        self.wait = None
         self.install(headless=headless)
 
     def install(self, headless=False):
-        """Initialize Chrome driver with anti-detection measures for Cloudflare"""
-        try:
-            # Use undetected-chromedriver to bypass Cloudflare
-            chrome_options = uc.ChromeOptions()
-            
-            # Basic options
-            chrome_options.add_argument("--no-sandbox")
-            chrome_options.add_argument("--disable-dev-shm-usage")
-            chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-            chrome_options.add_argument("--window-size=1920,1080")
-            chrome_options.add_argument("--start-maximized")
-            
-            if headless:
-                chrome_options.add_argument("--headless=new")
-            
-            # Create a unique user data directory
-            self.user_data_dir = tempfile.mkdtemp(prefix="chrome_user_data_")
-            chrome_options.add_argument(f"--user-data-dir={self.user_data_dir}")
-            
-            # Initialize undetected Chrome driver
-            print("Initializing undetected Chrome driver...")
-            self.driver = uc.Chrome(options=chrome_options, version_main=None)
-            
-            # Execute stealth scripts
-            self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-            
-            self.wait = WebDriverWait(self.driver, 30)
-            print("Chrome driver initialized successfully with anti-detection measures")
-            
-        except Exception as e:
-            print(f"Undetected Chrome error: {str(e)}")
-            # Fallback to regular Chrome if undetected-chromedriver fails
-            self._init_regular_chrome(headless)
-    
-    def _init_regular_chrome(self, headless):
-        """Fallback to regular Chrome with enhanced anti-detection"""
+        # Setup Chrome options
         chrome_options = webdriver.ChromeOptions()
-        
         if headless:
-            chrome_options.add_argument("--headless=new")
-            
+            chrome_options.add_argument("--headless=new")  # Use new headless mode
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--window-size=1920,1080")
+        chrome_options.add_argument("--window-size=1080,720")
         chrome_options.add_argument("--start-maximized")
         chrome_options.add_argument("--disable-blink-features=AutomationControlled")
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         chrome_options.add_experimental_option('useAutomationExtension', False)
         
-        # Better user agent
+        # Better user agent to avoid detection
         chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         
-        # Create a unique user data directory
+        # Create a unique user data directory to avoid conflicts
         self.user_data_dir = tempfile.mkdtemp(prefix="chrome_user_data_")
         chrome_options.add_argument(f"--user-data-dir={self.user_data_dir}")
         
+        # Initialize driver with better error handling
+        self.driver = None
+        initialization_methods = [
+            ("WebDriver Manager", self._init_with_manager, chrome_options),
+            ("System Chrome", self._init_system_chrome, chrome_options),
+            ("Direct Chrome", self._init_direct_chrome, chrome_options)
+        ]
+        
+        for method_name, method, options in initialization_methods:
+            try:
+                print(f"Trying to initialize Chrome with: {method_name}")
+                self.driver = method(options)
+                if self.driver:
+                    print(f"Successfully initialized Chrome with: {method_name}")
+                    break
+            except Exception as e:
+                print(f"Failed with {method_name}: {str(e)}")
+                continue
+        
+        if not self.driver:
+            raise WebDriverException(
+                "Failed to initialize Chrome WebDriver. Please ensure Chrome and ChromeDriver are installed.\n"
+                "You can install ChromeDriver manually or let webdriver-manager handle it automatically."
+            )
+        
+        self.wait = WebDriverWait(self.driver, 180)
+    
+    def _init_with_manager(self, options):
+        """Initialize Chrome using webdriver-manager to auto-download the driver"""
         try:
             service = Service(ChromeDriverManager().install())
-            self.driver = webdriver.Chrome(service=service, options=chrome_options)
-        except:
-            self.driver = webdriver.Chrome(options=chrome_options)
+            return webdriver.Chrome(service=service, options=options)
+        except Exception as e:
+            print(f"WebDriver Manager error: {e}")
+            raise
+    
+    def _init_system_chrome(self, options):
+        """Try to use Chrome from system PATH"""
+        return webdriver.Chrome(options=options)
+    
+    def _init_direct_chrome(self, options):
+        """Try common Chrome installation paths on Windows"""
+        common_paths = [
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            os.path.expanduser(r"~\AppData\Local\Google\Chrome\Application\chrome.exe")
+        ]
         
-        # Set timeouts
-        self.driver.set_page_load_timeout(600)  # 60 seconds for page load
-        self.driver.implicitly_wait(10)  # 10 seconds implicit wait
+        for chrome_path in common_paths:
+            if os.path.exists(chrome_path):
+                options.binary_location = chrome_path
+                # Try to find or download ChromeDriver
+                try:
+                    service = Service(ChromeDriverManager().install())
+                    return webdriver.Chrome(service=service, options=options)
+                except:
+                    return webdriver.Chrome(options=options)
         
-        self.wait = WebDriverWait(self.driver, 30)
-        print("Regular Chrome driver initialized with anti-detection measures")
+        raise FileNotFoundError("Chrome not found in common installation paths")
     
     def human_like_delay(self, min_seconds=0.5, max_seconds=2.0):
         """Add random human-like delay"""
